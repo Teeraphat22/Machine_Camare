@@ -1,0 +1,208 @@
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Machine Camera</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #F8F9FA;
+      text-align: center;
+      padding: 20px;
+      color: #333;
+    }
+
+    .container {
+      max-width: 700px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+    }
+
+    video, img {
+      width: 100%;
+      max-height: 450px;
+      object-fit: contain;
+      background: #222;
+      border-radius: 10px;
+    }
+
+    img {
+      display: none;
+    }
+
+    button {
+      padding: 14px 22px;
+      margin: 10px 5px;
+      border: none;
+      border-radius: 8px;
+      background: #F66018;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: .5;
+    }
+
+    #message {
+      white-space: pre-line;
+      color: #555;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h2>ถ่ายภาพเครื่องจักร</h2>
+
+    <video id="video" autoplay playsinline></video>
+    <img id="preview">
+
+    <canvas id="canvas" style="display:none"></canvas>
+
+    <p id="message">กำลังเปิดกล้อง...</p>
+
+    <div>
+      <button id="captureBtn" disabled>ถ่ายภาพ</button>
+      <button id="retakeBtn" hidden>ถ่ายใหม่</button>
+      <button id="useBtn" hidden>ใช้ภาพนี้</button>
+    </div>
+  </div>
+
+<script>
+  const video = document.getElementById("video");
+  const preview = document.getElementById("preview");
+  const canvas = document.getElementById("canvas");
+
+  const captureBtn = document.getElementById("captureBtn");
+  const retakeBtn = document.getElementById("retakeBtn");
+  const useBtn = document.getElementById("useBtn");
+  const message = document.getElementById("message");
+
+  const params = new URLSearchParams(location.search);
+  const parentOrigin = params.get("parentOrigin");
+
+  let stream = null;
+  let photoData = null;
+
+  async function startCamera() {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("เบราว์เซอร์ไม่รองรับการเปิดกล้อง");
+      }
+
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "user",
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      });
+
+      video.srcObject = stream;
+      await video.play();
+
+      captureBtn.disabled = false;
+      message.textContent = "กล้องพร้อมใช้งาน";
+
+    } catch (error) {
+      message.textContent =
+        "เปิดกล้องไม่ได้: " + error.message +
+        "\nกรุณาอนุญาต Camera ในเบราว์เซอร์";
+    }
+  }
+
+  captureBtn.addEventListener("click", function() {
+    if (!stream || video.readyState < 2) return;
+
+    const maxWidth = 1280;
+    const scale = Math.min(1, maxWidth / video.videoWidth);
+
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+
+    const context = canvas.getContext("2d");
+
+    context.drawImage(
+      video,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+
+    photoData = canvas.toDataURL("image/jpeg", 0.8);
+
+    preview.src = photoData;
+    preview.style.display = "block";
+    video.style.display = "none";
+
+    captureBtn.hidden = true;
+    retakeBtn.hidden = false;
+    useBtn.hidden = false;
+
+    message.textContent = "ถ่ายภาพสำเร็จ ตรวจสอบภาพก่อนกดยืนยัน";
+
+    stopCamera();
+  });
+
+  retakeBtn.addEventListener("click", function() {
+    photoData = null;
+
+    preview.style.display = "none";
+    video.style.display = "block";
+
+    captureBtn.hidden = false;
+    retakeBtn.hidden = true;
+    useBtn.hidden = true;
+
+    message.textContent = "กำลังเปิดกล้องอีกครั้ง...";
+    startCamera();
+  });
+
+  useBtn.addEventListener("click", function() {
+    if (!photoData) return;
+
+    if (!window.opener || window.opener.closed) {
+      message.textContent = "ไม่พบหน้าเว็บลงทะเบียน กรุณาปิดหน้านี้แล้วลองใหม่";
+      return;
+    }
+
+    if (!parentOrigin ||
+        !/^https:\/\/([a-z0-9-]+\.)*(googleusercontent\.com|script\.google\.com)$/.test(parentOrigin)) {
+      message.textContent = "ไม่พบที่อยู่หน้าเว็บต้นทางที่ถูกต้อง";
+      return;
+    }
+
+    window.opener.postMessage({
+      type: "MACHINE_PHOTO",
+      image: photoData
+    }, parentOrigin);
+
+    message.textContent = "ส่งภาพกลับเรียบร้อยแล้ว";
+
+    setTimeout(function() {
+      window.close();
+    }, 500);
+  });
+
+  function stopCamera() {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+  }
+
+  window.addEventListener("pagehide", stopCamera);
+
+  startCamera();
+</script>
+</body>
+</html>
