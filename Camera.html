@@ -40,7 +40,7 @@
       margin: 10px 5px;
       border: none;
       border-radius: 8px;
-      background: #F66018;
+      background: #709dfe;
       color: white;
       font-size: 16px;
       cursor: pointer;
@@ -69,6 +69,7 @@
     <p id="message">กำลังเปิดกล้อง...</p>
 
     <div>
+      <button id="switchCameraBtn" type="button" disabled>ใช้กล้องหลัง</button>
       <button id="captureBtn" disabled>ถ่ายภาพ</button>
       <button id="retakeBtn" hidden>ถ่ายใหม่</button>
       <button id="useBtn" hidden>ใช้ภาพนี้</button>
@@ -80,6 +81,7 @@
   const preview = document.getElementById("preview");
   const canvas = document.getElementById("canvas");
 
+  const switchCameraBtn = document.getElementById("switchCameraBtn");
   const captureBtn = document.getElementById("captureBtn");
   const retakeBtn = document.getElementById("retakeBtn");
   const useBtn = document.getElementById("useBtn");
@@ -90,16 +92,25 @@
 
   let stream = null;
   let photoData = null;
+  let cameraFacingMode = "user";
+  let isStartingCamera = false;
 
   async function startCamera() {
+    if (isStartingCamera) return;
+
+    isStartingCamera = true;
+    captureBtn.disabled = true;
+    switchCameraBtn.disabled = true;
+
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error("เบราว์เซอร์ไม่รองรับการเปิดกล้อง");
       }
 
+      stopCamera();
       stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: "user",
+          facingMode: cameraFacingMode,
           width: { ideal: 1280 },
           height: { ideal: 720 }
         },
@@ -110,14 +121,31 @@
       await video.play();
 
       captureBtn.disabled = false;
+      switchCameraBtn.disabled = false;
+      switchCameraBtn.textContent =
+        cameraFacingMode === "user" ? "ใช้กล้องหลัง" : "ใช้กล้องหน้า";
       message.textContent = "กล้องพร้อมใช้งาน";
 
     } catch (error) {
+      stopCamera();
       message.textContent =
         "เปิดกล้องไม่ได้: " + error.message +
         "\nกรุณาอนุญาต Camera ในเบราว์เซอร์";
+    } finally {
+      isStartingCamera = false;
     }
   }
+
+  switchCameraBtn.addEventListener("click", function() {
+    if (!stream || isStartingCamera) return;
+
+    cameraFacingMode = cameraFacingMode === "user" ? "environment" : "user";
+    message.textContent =
+      cameraFacingMode === "environment"
+        ? "กำลังสลับไปใช้กล้องหลัง..."
+        : "กำลังสลับไปใช้กล้องหน้า...";
+    startCamera();
+  });
 
   captureBtn.addEventListener("click", function() {
     if (!stream || video.readyState < 2) return;
@@ -145,6 +173,7 @@
     video.style.display = "none";
 
     captureBtn.hidden = true;
+    switchCameraBtn.hidden = true;
     retakeBtn.hidden = false;
     useBtn.hidden = false;
 
@@ -162,6 +191,7 @@
     captureBtn.hidden = false;
     retakeBtn.hidden = true;
     useBtn.hidden = true;
+    switchCameraBtn.hidden = false;
 
     message.textContent = "กำลังเปิดกล้องอีกครั้ง...";
     startCamera();
